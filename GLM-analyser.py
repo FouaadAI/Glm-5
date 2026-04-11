@@ -1345,11 +1345,16 @@ def call_glm51_agent(
     user_prompt: str,
     system_prompt: str = GLM51_SYSTEM_PROMPT,
     status_placeholder=None,
-    max_rounds: int = 8
+    max_rounds: int = 8,
+    use_web_search: bool = True,
 ) -> str:
-    """Multi-Round Agent Loop – unverändert, aber mit verstärkter Tool-Nutzung."""
+    """Multi-Round Agent Loop mit konfigurierbarem web_search."""
     if not api_key:
         return "❌ Kein GLM-5.1 API Key angegeben."
+
+    # Tools je nach web_search Toggle zusammenstellen
+    active_tools = TOOLS if use_web_search else [t for t in TOOLS if t.get("type") != "web_search"]
+
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user",   "content": user_prompt}
@@ -1373,7 +1378,7 @@ def call_glm51_agent(
     try:
         for round_num in range(max_rounds):
             _update_status(f"🔄 Runde {round_num+1}/{max_rounds} – Anfrage an GLM-5.1...", round_num+1, max_rounds)
-            response = robust_glm51_call(api_key, messages, tools=TOOLS)
+            response = robust_glm51_call(api_key, messages, tools=active_tools)
             response_message = response.choices[0].message
             finish_reason = response.choices[0].finish_reason
             tool_calls = getattr(response_message, "tool_calls", None)
@@ -1429,7 +1434,7 @@ def call_glm51_agent(
         final_content = messages[-1].get("content", "") if isinstance(messages[-1], dict) else ""
         if not final_content:
             _update_status("🏁 Generiere finale Analyse...", max_rounds, max_rounds)
-            last_response = robust_glm51_call(api_key, messages)
+            last_response = robust_glm51_call(api_key, messages, tools=active_tools)
             final_content = last_response.choices[0].message.content or ""
         return final_content or "⚠️ Analyse abgeschlossen (max. Runden erreicht)."
     except Exception as e:
@@ -2041,12 +2046,12 @@ with tab3:
               <br>✅ Alle 5 Datenquellen abgerufen. GLM-5.1 Analyse beginnt...
             </div>""", unsafe_allow_html=True)
 
-            tools_for_call = TOOLS if use_web_search else [t for t in TOOLS if t.get("type") != "web_search"]
             result_text = call_glm51_agent(
                 st.session_state.glm_key,
                 enriched_prompt,
                 status_placeholder=status_ph,
-                max_rounds=max_agent_rounds
+                max_rounds=max_agent_rounds,
+                use_web_search=use_web_search,
             )
 
             st.session_state.last_analysis = result_text
@@ -2154,7 +2159,8 @@ with tab4:
                         st.session_state.glm_key,
                         agent_task,
                         status_placeholder=status_ph2,
-                        max_rounds=max_agent_rounds
+                        max_rounds=max_agent_rounds,
+                        use_web_search=use_web_search,
                     )
                     st.session_state.last_analysis = result_text
                     status_ph2.empty()
