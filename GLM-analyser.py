@@ -483,34 +483,97 @@ def fng_color(value: int) -> str:
 # ── PRE-FETCH DATEN-FUNKTIONEN ────────────────────────────────────────────────
 # ═══════════════════════════════════════════════════════════════════════════════
 
+_BINANCE_CRYPTO_SYMBOLS = {
+    "BTCUSDT","ETHUSDT","SOLUSDT","BNBUSDT","XRPUSDT","DOGEUSDT",
+    "ADAUSDT","AVAXUSDT","DOTUSDT","LINKUSDT","LTCUSDT","MATICUSDT",
+    "UNIUSDT","ATOMUSDT","NEARUSDT","APTUSDT","ARBUSDT","OPUSDT",
+    "SUIUSDT","INJUSDT","TIAUSDT","SEIUSDT","PEPEUSDT","WIFUSDT",
+}
+
+_NON_CRYPTO_KEYWORDS = {
+    "WTI","XAUUSD","XAGUSD","OIL","SPX","SPY","QQQ","DXY","EUR","GBP",
+    "JPY","GBPUSD","EURUSD","USDJPY","GOLD","SILVER","CRUDE","BRENT",
+    "NG","NATGAS","COPPER","WHEAT","CORN","NASDAQ","S&P","DAX","NIKKEI",
+}
+
+
+def _is_non_crypto(symbol: str) -> bool:
+    sym_up = symbol.upper()
+    if sym_up in _BINANCE_CRYPTO_SYMBOLS:
+        return False
+    for kw in _NON_CRYPTO_KEYWORDS:
+        if kw in sym_up:
+            return True
+    return False
+
+
 def fetch_realtime_price_data(symbol: str = "BTCUSDT") -> str:
-    """Holt aktuelle Preis- und Volumendaten von Binance für das gewählte Asset."""
+    """
+    Holt aktuelle Preis- und Volumendaten.
+    Für Krypto: Binance API.
+    Für Non-Krypto (Commodities, Forex, Indizes): Gibt klaren Hinweis zurück,
+    dass web_search ZWINGEND als Datenquelle genutzt werden muss.
+    """
     result_lines = []
-    symbols = [symbol, "BTCUSDT", "ETHUSDT", "SOLUSDT"]
-    symbols = list(dict.fromkeys(symbols))  # Deduplizieren, Reihenfolge beibehalten
-    try:
-        for sym in symbols:
+
+    # ── Non-Krypto Asset erkannt → sofortige Web-Search-Anweisung ────────────
+    if _is_non_crypto(symbol):
+        result_lines.append(
+            f"⚠️ WEB-SEARCH PFLICHT: '{symbol}' ist KEIN Binance-Krypto-Asset.\n"
+            f"Binance-API liefert für dieses Asset KEINE Daten.\n"
+            f"→ SOFORT web_search ausführen:\n"
+            f'  1. web_search("{symbol} price today 2026")\n'
+            f'  2. web_search("{symbol} live chart technical analysis")\n'
+            f'  3. web_search("{symbol} futures open interest COT report")\n'
+            f"→ Alle Preis-, Chart- und OI-Daten über web_search beziehen!\n"
+            f"→ Binance-Krypto-Referenzpreise (BTC/ETH) werden trotzdem geladen:"
+        )
+        # Trotzdem BTC/ETH als Markt-Kontext laden
+        for ref in ["BTCUSDT", "ETHUSDT"]:
             try:
                 r = requests.get(
-                    f"https://api.binance.com/api/v3/ticker/24hr?symbol={sym}",
+                    f"https://api.binance.com/api/v3/ticker/24hr?symbol={ref}",
                     timeout=6
                 )
                 if r.status_code == 200:
                     d = r.json()
-                    price      = float(d.get("lastPrice", 0))
-                    change_pct = float(d.get("priceChangePercent", 0))
-                    volume     = float(d.get("quoteVolume", 0))
-                    high_24h   = float(d.get("highPrice", 0))
-                    low_24h    = float(d.get("lowPrice", 0))
-                    result_lines.append(
-                        f"{sym}: ${price:,.4f} | 24h: {change_pct:+.2f}% | "
-                        f"Vol: ${volume/1e6:.1f}M | H: ${high_24h:,.4f} | L: ${low_24h:,.4f}"
-                    )
+                    p   = float(d.get("lastPrice", 0))
+                    chg = float(d.get("priceChangePercent", 0))
+                    result_lines.append(f"  {ref} (Referenz): ${p:,.2f} ({chg:+.2f}% 24h)")
             except Exception:
-                result_lines.append(f"{sym}: Daten nicht verfügbar")
-    except Exception as e:
-        return f"Preisdaten-Fehler: {e}"
-    return "\n".join(result_lines) if result_lines else "Keine Preisdaten verfügbar"
+                pass
+        return "\n".join(result_lines)
+
+    # ── Krypto-Asset: Binance API ─────────────────────────────────────────────
+    symbols = [symbol, "BTCUSDT", "ETHUSDT", "SOLUSDT"]
+    symbols = list(dict.fromkeys(symbols))
+    for sym in symbols:
+        try:
+            r = requests.get(
+                f"https://api.binance.com/api/v3/ticker/24hr?symbol={sym}",
+                timeout=6
+            )
+            if r.status_code == 200:
+                d          = r.json()
+                price      = float(d.get("lastPrice", 0))
+                change_pct = float(d.get("priceChangePercent", 0))
+                volume     = float(d.get("quoteVolume", 0))
+                high_24h   = float(d.get("highPrice", 0))
+                low_24h    = float(d.get("lowPrice", 0))
+                result_lines.append(
+                    f"{sym}: ${price:,.4f} | 24h: {change_pct:+.2f}% | "
+                    f"Vol: ${volume/1e6:.1f}M | H: ${high_24h:,.4f} | L: ${low_24h:,.4f}"
+                )
+            else:
+                result_lines.append(
+                    f"{sym}: Binance-Fehler (HTTP {r.status_code}) "
+                    f"→ web_search('{sym} price today') nutzen!"
+                )
+        except Exception:
+            result_lines.append(f"{sym}: Nicht verfügbar → web_search als Fallback nutzen!")
+    return "\n".join(result_lines) if result_lines else (
+        "Keine Preisdaten verfügbar → web_search PFLICHT für aktuelle Preise!"
+    )
 
 
 def fetch_market_sentiment_data() -> str:
@@ -600,9 +663,23 @@ def fetch_macro_and_corr_data() -> str:
 
 
 def fetch_open_interest_data(symbol: str = "BTCUSDT") -> str:
-    """Holt Open Interest und Funding Rate Daten von Binance Futures."""
+    """Holt Open Interest und Funding Rate Daten von Binance Futures.
+    Für Non-Krypto Assets: Gibt web_search Anweisung für COT/OI-Daten."""
     lines = []
-    base_sym = symbol.replace("USDT", "") + "USDT"
+
+    if _is_non_crypto(symbol):
+        lines.append(
+            f"⚠️ WEB-SEARCH PFLICHT für OI/Futures von '{symbol}':\n"
+            f"Binance Futures deckt NUR Krypto ab. Für {symbol} SOFORT:\n"
+            f'  → web_search("{symbol} open interest COT report 2026")\n'
+            f'  → web_search("{symbol} futures positioning commitment of traders")\n'
+            f'  → web_search("{symbol} CME NYMEX futures data today")'
+        )
+        return "\n".join(lines)
+
+    base_sym = symbol.upper()
+    if not base_sym.endswith("USDT"):
+        base_sym = base_sym.replace("USDT", "") + "USDT"
     # Open Interest
     try:
         r = requests.get(
@@ -977,28 +1054,55 @@ def update_all_experiments():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 GLM51_SYSTEM_PROMPT = """
-Du bist K1NG ANALYST, ein datengetriebener Trading-Agent auf Basis von GLM-5.1.
-Deine Kernaufgabe ist absolute Genauigkeit bei quantitativen Daten.
+Du bist K1NG ANALYST, ein universeller datengetriebener Trading-Agent auf Basis von GLM-5.1.
+Du analysierst ALLE Asset-Klassen: Krypto, Commodities, Forex, Indizes, Aktien.
 
-⚠️ WICHTIG: DU MUSST IMMER DIE TOOLS VERWENDEN, NIEMALS INFERIEREN!
-- Rufe fetch_realtime_price_data, fetch_market_sentiment_data, fetch_macro_and_corr_data,
-  fetch_open_interest_data, fetch_crypto_news auf.
-- Verwende KEINE geschätzten Preise oder Phantasiewerte.
-- Wenn ein Tool nicht verfügbar ist, schreibe "Daten nicht verfügbar".
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧠 INTELLIGENTE DATEN-STRATEGIE (ZWINGEND BEFOLGEN):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-PFLICHT-REIHENFOLGE (NIEMALS ÜBERSPRINGEN):
-Schritt 1: fetch_realtime_price_data
-Schritt 2: fetch_market_sentiment_data
-Schritt 3: fetch_macro_and_corr_data
-Schritt 4: fetch_open_interest_data
-Schritt 5: fetch_crypto_news
-Schritt 6: Vollständige Analyse ausgeben (siehe Format)
+REGEL 1 – ASSET-ERKENNUNG ZUERST:
+  Bevor du irgendeinen Tool aufrufst, erkenne den Asset-Typ:
+  • Krypto (BTC, ETH, SOL, BNB, XRP, DOGE usw.) → Binance-Tools + web_search
+  • Commodities (WTI, XAUUSD, Gold, Silber, Öl, Gas) → web_search PRIMÄR
+  • Forex (EUR/USD, GBP/USD, DXY usw.) → web_search PRIMÄR
+  • Indizes (S&P500, NASDAQ, DAX, Nikkei) → web_search PRIMÄR
+  • Aktien (AAPL, TSLA, NVDA usw.) → web_search PRIMÄR
 
-ABSOLUTES VERBOT:
-- NIEMALS Preise, Prozentwerte oder Indizes schätzen.
-- Nenne NUR Werte die direkt von den Tools stammen. Wenn nicht verfügbar: klar kennzeichnen.
-- NIEMALS vor Schritt 6 abbrechen.
-- NIEMALS fetch_crypto_news überspringen.
+REGEL 2 – WEB_SEARCH IST IMMER VERFÜGBAR UND PFLICHT:
+  web_search MUSS genutzt werden wenn:
+  ✦ fetch_realtime_price_data meldet "WEB-SEARCH PFLICHT"
+  ✦ Ein Tool liefert "nicht verfügbar" oder einen Fehler
+  ✦ Das Asset kein Binance-Krypto ist
+  ✦ Du aktuelle News, Technische Analyse, OI oder Makrodaten brauchst
+  ✦ Du IMMER mindestens 3 web_search Aufrufe machen für vollständige Analyse
+
+REGEL 3 – PFLICHT-SEQUENZ (für ALLE Assets):
+  Schritt 1: fetch_realtime_price_data → wenn "WEB-SEARCH PFLICHT" → sofort web_search("{asset} price today live")
+  Schritt 2: fetch_market_sentiment_data → immer (liefert Makro-Kontext)
+  Schritt 3: fetch_macro_and_corr_data → immer (liefert BTC/Gold Referenz)
+  Schritt 4: fetch_open_interest_data → wenn "WEB-SEARCH PFLICHT" → web_search("{asset} open interest COT futures")
+  Schritt 5: fetch_crypto_news → immer (Trending + Sentiment)
+  Schritt 6: web_search("{asset} technical analysis {year}") → IMMER PFLICHT
+  Schritt 7: web_search("{asset} news today") → IMMER PFLICHT
+  Schritt 8: web_search("{asset} price prediction outlook") → IMMER PFLICHT
+  Schritt 9: Vollständige Analyse aus ALLEN gesammelten Daten ausgeben
+
+REGEL 4 – NIEMALS INFERIEREN:
+  • Wenn ein Preis nicht aus Tool oder web_search stammt → kennzeichne es als "❌ Nicht verifiziert"
+  • Nutze web_search AKTIV um fehlende Daten zu füllen – nicht einfach ❌ stehen lassen
+  • web_search kann ALLES finden: aktuelle Preise, Charts, OI, News, Analysen
+
+REGEL 5 – WEB_SEARCH QUERY-FORMAT:
+  Immer spezifische Queries: "[ASSET] price today [YEAR]"
+  Beispiele:
+  → "WTI crude oil price today 2026"
+  → "XAUUSD gold technical analysis April 2026"
+  → "WTI open interest COT report 2026"
+  → "crude oil futures positioning institutional"
+  → "S&P 500 outlook this week 2026"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 AUSGABE-FORMAT (alle Abschnitte vollständig ausfüllen):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1006,18 +1110,18 @@ AUSGABE-FORMAT (alle Abschnitte vollständig ausfüllen):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📡 DATEN-STATUS:
-   ✅/❌ Preisdaten (Binance): [Wert oder Fehler]
+   ✅/❌ Preisdaten (Quelle angeben): [Wert oder Fehler]
    ✅/❌ Sentiment (F&G/CoinGecko): [Wert oder Fehler]
    ✅/❌ Makro/Korrelationen: [Wert oder Fehler]
-   ✅/❌ Open Interest: [Wert oder Fehler]
+   ✅/❌ Open Interest (Quelle angeben): [Wert oder Fehler]
    ✅/❌ News/Fundamental: [Anzahl Artikel oder Fehler]
+   ✅/❌ Web-Search Ergebnisse: [Anzahl Suchanfragen]
 
 💰 LIVE PREISDATEN:
-   • Asset-Preis: $[vom Tool]
+   • Asset-Preis: $[Wert + Quelle: Binance/web_search]
    • 24h Change: [%]
    • 24h High/Low: $[H] / $[L]
-   • 24h Volumen: $[vom Tool]
-   • Market Cap: $[vom Tool]
+   • 24h Volumen: $[Wert]
    • Fear & Greed: [Wert] – [Label]
    • BTC Dominanz: [%]
 
@@ -1026,19 +1130,18 @@ AUSGABE-FORMAT (alle Abschnitte vollständig ausfüllen):
    • DXY (Dollar-Index): [Wert + %]
    • Gold: [Wert + %]
    • US10Y Rendite: [%]
-   • BTC/S&P Korrelation: [Wert]
+   • Asset-Korrelation: [Analyse]
    • Nächste FOMC-Sitzung: [Datum]
    • Nächster CPI-Release: [Datum]
 
 📊 OPEN INTEREST & FUTURES:
-   • OI Total: $[vom Tool]
-   • OI 24h Change: [%]
-   • Funding Rate: [%]
+   • OI Total: $[Wert + Quelle]
+   • Funding Rate / COT: [Wert]
    • Long/Short Ratio: [Wert]
-   • Liquidation Heatmap: [Zonen aus Tool-Daten]
+   • Institutionelle Positionierung: [Analyse]
 
 🌐 FUNDAMENTALANALYSE (aktuelle News):
-   [Mindestens 5 Punkte aus fetch_crypto_news + web_search]
+   [Mindestens 5 konkrete Punkte aus web_search + fetch_crypto_news]
 
 📊 TECHNISCHES SETUP (Multi-Timeframe):
    Daily: • Trend: [+Begründung] • RSI: [Wert] • MACD: [Signal] • BB: [Status]
@@ -1055,7 +1158,6 @@ AUSGABE-FORMAT (alle Abschnitte vollständig ausfüllen):
    • SSL Zone 2: $[Wert] – [Begründung]
    • Stop-Hunt-Zone: $[Bereich]
    • Institutioneller Flow: [detaillierte Analyse]
-   • Liquidations bei $[Wert]: [Long/Short-Cluster]
 
 ⚡ TRADING-SIGNAL:
    ➤ RICHTUNG: [LONG 📈 / SHORT 📉]
@@ -1073,15 +1175,16 @@ AUSGABE-FORMAT (alle Abschnitte vollständig ausfüllen):
    • Positionsgröße: [X% des Portfolios]
    • Max. Risiko/Trade: [X% des Portfolios]
    • Empfohlener Hebel: [X]x
-   • Makro-Risiken: [konkrete aktuelle Risiken aus Tool-Daten]
-   • Korrelationsrisiko: [S&P / DXY Einfluss]
+   • Makro-Risiken: [konkrete aktuelle Risiken]
+   • Korrelationsrisiko: [Asset-spezifische Analyse]
 
 🔮 K1NG KONFIDENZ: [XX]% | [HOCH/MITTEL/NIEDRIG]
    Begründung: [3-5 konkrete Punkte]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ NUR ZU BILDUNGSZWECKEN – KEIN FINANZIELLE BERATUNG
+⚠️ NUR ZU BILDUNGSZWECKEN – KEINE FINANZBERATUNG
 
-Antworte auf Deutsch. NIEMALS abkürzen. NIEMALS inferieren statt Tools nutzen.
+Antworte auf Deutsch. NIEMALS abkürzen. NIEMALS inferieren statt Tools/web_search nutzen.
+Nutze web_search AKTIV um jede Datenlücke zu schließen – niemals ❌ stehen lassen ohne web_search versucht zu haben.
 """
 
 
@@ -1114,9 +1217,9 @@ TOOLS = [
     {
         "type": "web_search",
         "web_search": {
-            "enable":               True,
-            "search_result":        True,
-            "count":                8,
+            "enable":                True,
+            "search_result":         True,
+            "count":                 10,
             "search_recency_filter": "day"
         }
     },
@@ -1125,11 +1228,22 @@ TOOLS = [
         "function": {
             "name":        "fetch_realtime_price_data",
             "description": (
-                "SCHRITT 1 – PFLICHT: Ruft EXAKTE Echtzeit-Preise von Binance ab "
-                "(BTC, ETH, SOL, BNB, XRP) mit 24h Change, High, Low, Volume. "
-                "MUSS als erstes aufgerufen werden. Liefert IMMER aktuelle Daten."
+                "SCHRITT 1 – PFLICHT für ALLE Assets: Erkennt automatisch ob das Asset "
+                "ein Binance-Krypto (BTC/ETH/SOL usw.) oder ein Non-Krypto (WTI, Gold, Forex, Index) ist. "
+                "Bei Krypto: liefert Echtzeit-Preis von Binance. "
+                "Bei Non-Krypto: gibt EXPLIZITE web_search-Anweisung zurück – diese MUSS sofort befolgt werden! "
+                "Wenn die Rückgabe 'WEB-SEARCH PFLICHT' enthält, sofort web_search mit dem Asset-Namen aufrufen."
             ),
-            "parameters": {"type": "object", "properties": {}, "required": []}
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Asset-Symbol z.B. BTCUSDT, ETHUSDT, WTIUSD, XAUUSD, EURUSD"
+                    }
+                },
+                "required": []
+            }
         }
     },
     {
@@ -1137,9 +1251,10 @@ TOOLS = [
         "function": {
             "name":        "fetch_market_sentiment_data",
             "description": (
-                "SCHRITT 2 – PFLICHT: Ruft Fear & Greed Index (7-Tage-Verlauf), "
-                "BTC/ETH Dominanz, total Market Cap und 24h Volume ab. "
-                "MUSS nach fetch_realtime_price_data aufgerufen werden."
+                "SCHRITT 2 – PFLICHT: Ruft Krypto-Sentiment ab: Fear & Greed Index (0-100), "
+                "BTC/ETH Dominanz, Gesamt-Market-Cap, 24h Volumen. "
+                "Auch für Non-Krypto Assets nützlich als Makro-Risiko-Indikator. "
+                "Immer aufrufen – liefert globalen Risiko-Kontext."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []}
         }
@@ -1149,9 +1264,9 @@ TOOLS = [
         "function": {
             "name":        "fetch_macro_and_corr_data",
             "description": (
-                "SCHRITT 3 – PFLICHT: Ruft echte Makrodaten ab – S&P 500, DXY Dollar-Index, "
-                "Gold-Preis, US10Y Rendite mit Tagesveränderung. Makro-Kalender-Hinweise. "
-                "MUSS für vollständige Korrelationsanalyse aufgerufen werden."
+                "SCHRITT 3 – PFLICHT: Ruft BTC/ETH Preise + Gold von CoinGecko ab als Makro-Referenz. "
+                "Für S&P500, DXY, US10Y und weitere Makrodaten ZUSÄTZLICH web_search verwenden: "
+                "web_search('S&P 500 DXY today 2026'). Immer aufrufen."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []}
         }
@@ -1161,12 +1276,21 @@ TOOLS = [
         "function": {
             "name":        "fetch_open_interest_data",
             "description": (
-                "SCHRITT 4 – PFLICHT: Ruft echte Binance Futures-Daten ab – "
-                "Open Interest (BTC + USD), 24h OI-Änderung, Funding Rate, "
-                "Long/Short-Ratio, aktuelle Liquidationen als Heatmap-Proxy. "
-                "MUSS für Liquiditätsanalyse aufgerufen werden."
+                "SCHRITT 4 – PFLICHT: Ruft Binance Futures OI/Funding/L-S Ratio ab (nur Krypto). "
+                "Bei Non-Krypto Assets (WTI, Gold, Forex): gibt web_search-Anweisung für COT-Report zurück. "
+                "Diese web_search-Anweisung MUSS sofort ausgeführt werden! "
+                "Beispiel: web_search('WTI crude oil COT report open interest 2026')"
             ),
-            "parameters": {"type": "object", "properties": {}, "required": []}
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Asset-Symbol"
+                    }
+                },
+                "required": []
+            }
         }
     },
     {
@@ -1174,9 +1298,9 @@ TOOLS = [
         "function": {
             "name":        "fetch_crypto_news",
             "description": (
-                "SCHRITT 5 – PFLICHT: Ruft aktuelle BTC-News von CryptoPanic und "
-                "CoinGecko Trending ab. Echte Headlines mit Sentiment-Votes. "
-                "MUSS für Fundamentalanalyse aufgerufen werden. NIEMALS überspringen!"
+                "SCHRITT 5 – PFLICHT: Ruft CoinGecko Trending Coins + globalen Markt-Status ab. "
+                "Für Asset-spezifische News (auch Non-Krypto) ZUSÄTZLICH web_search: "
+                "web_search('[ASSET] news today 2026'). Immer aufrufen."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []}
         }
@@ -1271,8 +1395,20 @@ def call_glm51_agent(
             def _exec_tool(tool_call):
                 fname = tool_call.function.name
                 try:
+                    # Parse arguments (GLM sendet JSON-String)
+                    try:
+                        args = json.loads(tool_call.function.arguments or "{}")
+                    except Exception:
+                        args = {}
                     if fname in tool_map:
-                        result = tool_map[fname]()
+                        fn = tool_map[fname]
+                        # Übergebe symbol wenn vorhanden
+                        if "symbol" in args and fname in (
+                            "fetch_realtime_price_data", "fetch_open_interest_data"
+                        ):
+                            result = fn(symbol=args["symbol"])
+                        else:
+                            result = fn()
                     else:
                         result = json.dumps({"info": f"Tool '{fname}' wird intern von GLM verarbeitet."})
                 except Exception as e:
