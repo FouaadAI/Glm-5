@@ -1,9 +1,28 @@
-streamlit>=1.32.0
-pandas>=2.0.0
-numpy>=1.26.0
-requests>=2.31.0
-httpx>=0.27.0
-plotly>=5.20.0
-openai>=1.30.0
-ta>=0.11.0
-tenacity>=8.3.0
+# requirements.txt – K1NG QUANTUM ULTIMATE v5.1
+# Generiert am 2026-04-13
+# Installiere mit: pip install -r requirements.txt
+
+# ─── Kernabhängigkeiten ────────────────────────────────────────────────
+streamlit>=1.28.0          # Web‑UI Framework
+pandas>=2.0.0              # Datenverarbeitung
+numpy>=1.24.0              # Numerische Berechnungen
+requests>=2.31.0           # HTTP‑Anfragen (APIs, Web‑Scraping)
+plotly>=5.17.0             # Interaktive Charts
+
+# ─── Finanz‑ & Technische Analyse ───────────────────────────────────────
+yfinance>=0.2.28           # Aktien‑ / Rohstoffdaten (WTI, etc.)
+ta>=0.10.2                 # Technische Indikatoren (RSI, MACD, Bollinger)
+
+# ─── KI / LLM Integration ───────────────────────────────────────────────
+openai>=1.12.0             # OpenAI‑kompatible API (Zhipu GLM‑5.1)
+httpx>=0.25.0              # HTTP‑Client mit Timeout & Retry
+tenacity>=8.2.0            # Wiederholungslogik bei API‑Fehlern
+
+# ─── Web‑Scraping & Datenextraktion ─────────────────────────────────────
+beautifulsoup4>=4.12.0     # HTML‑Parsing (CFTC‑COT‑Report)
+lxml>=4.9.0                # Parser‑Backend für BeautifulSoup
+
+# ─── Hilfsbibliotheken ──────────────────────────────────────────────────
+python-dateutil>=2.8.0     # Datumsverarbeitung
+pytz>=2023.3               # Zeitzonen
+tqdm>=4.66.0               # Fortschrittsanzeige (optional, für Pre‑Fetch)
